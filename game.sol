@@ -17,10 +17,6 @@ contract Ownable {
         require(msg.sender == owner, "Ownable: caller is not the owner");
         _;
     }
-    /**
-    * @dev Transfers ownership of the contract to a new account (`newOwner`).
-    * Can only be called by the current owner.
-    */
     function transferOwnership(address newOwner) public onlyOwner {
         require(newOwner != address(0), "Ownable: new owner is the zero address");
         emit OwnershipTransferred(owner, newOwner);
@@ -39,24 +35,6 @@ contract ltjGame is Ownable {
     uint256 hour2 = 7200;
     uint256 oneday = 60 * 60 * 24;
 
-
-    struct User {
-        address userAddr;
-        string recCode;
-        string upCode;
-        uint256 inviteAmount;
-        uint256 totalInviteAmount;
-        uint256 releaseAmount;
-        uint256 dyAmount;
-        uint256 withdrawBonus;
-        uint256 tokenCount;
-        uint256 exitTime;
-        uint256 level;
-        uint256 valid;
-        uint256 inIndex;
-        bool exited;
-    }
-
     struct Invest {
 
         address userAddress;
@@ -68,20 +46,12 @@ contract ltjGame is Ownable {
         bool status;
     }
 
-    mapping(address => bool) private masterMap;
-    mapping(address => User) userMapping;
-    mapping(string => address) addressMapping;
-    mapping(uint256 => address) indexMapping;
-    uint256 private  curUserIndex = 0;
-    mapping(string => uint256) teamCountMapping;
-    mapping(address => address[]) teamUserMapping;
-    //需修改区域
-    address private feeAddr = 0xa;//手续费账号
-    address private firstAccountAddr = 0xa;//首个账号
-    string defaultAddrCode = "abc";//默认推荐码
-    address private tokenAddr = 0xa;//代币地址
-    uint256 tokenRate = 10;//发放token比例， 1eth，10个
-    //修改结束
+
+    address private feeAddr = 0xa;
+    address private firstAccountAddr = 0xa;
+    string defaultAddrCode = "PMCC";
+    address private tokenAddr = 0xa;
+    uint256 tokenRate = 100;
 
     Invest[] invests;
     uint256 beginTime;
@@ -94,8 +64,6 @@ contract ltjGame is Ownable {
     event investEvent(address indexed addr, uint256 indexed am);
     event submitStaticEvent(address indexed addr, uint256 indexed am, uint256 times);
     event submitDyEvent(address indexed addr, uint256 indexed am, uint256 times);
-
-    event SetMaster(address indexed masterAddr, bool indexed valid);//设置管理员事件
 
     constructor(uint256 startTime) public payable {
         uint256 inputAmount = 50 * ethWei;
@@ -113,13 +81,6 @@ contract ltjGame is Ownable {
         beginTime = startTime;
         ltjToken = IERC20(tokenAddr);
         addMaster(msg.sender);
-    }
-
-    //添加owner,添加管理者，无法删除！
-    function addMaster(address addr) public onlyOwner {
-        require(addr != address(0));
-        masterMap[addr] = true;
-        emit SetMaster(addr, true);
     }
 
     function delMaster(address addr) public onlyOwner {
@@ -190,11 +151,6 @@ contract ltjGame is Ownable {
         emit investEvent(userAddress, inputAmount);
     }
 
-    function settlementArr(address[] list) public onlyMaster {
-        for (uint256 i = 0; i < list.length; i++) {
-            settlementDay(list[i]);
-        }
-    }
 
     function settlementDay(address addr) private {
         User memory user = userMapping[addr];
@@ -218,26 +174,6 @@ contract ltjGame is Ownable {
         }
     }
 
-    function executeRec(address userAddress, address upAddr, uint256 times) private returns (address, address, uint256){
-        User memory upUser = userMapping[upAddr];
-
-        if (upAddr != address(0) && upUser.valid > 0 && times <= 20) {
-            address reAddr = address(0);
-            if (upUser.valid == 2 && getWebLineLevel(teamCountMapping[upUser.recCode]) >= times) {
-                User memory baseUser = userMapping[userAddress];
-
-                uint256 dyv = getBase(baseUser.inviteAmount, upUser.inviteAmount) * baseUser.level * getLineLevel(times) / fixedScale / dyScale;
-                userMapping[upAddr].dyAmount = upUser.dyAmount + dyv;
-                emit submitDyEvent(upAddr, dyv, times);
-                return executeRec(userAddress, addressMapping[upUser.upCode], times + 1);
-
-            } else {
-                reAddr = addressMapping[upUser.upCode];
-                return executeRec(userAddress, reAddr, times + 1);
-            }
-        }
-        return (address(0), address(0), 0);
-    }
 
     function withdraw() public payable gameActive {
         User memory user = userMapping[msg.sender];
@@ -269,17 +205,6 @@ contract ltjGame is Ownable {
         emit investEvent(msg.sender, user.inviteAmount);
     }
 
-    function withdrawBonus() public gameActive {
-        User memory user = userMapping[msg.sender];
-        require(user.valid > 0, "account invalid");
-        uint256 allBonus = user.releaseAmount + user.dyAmount;
-        require(allBonus >= ethWei, "greater than 1");
-        require(address(this).balance >= allBonus, "cccccc");
-        msg.sender.transfer(allBonus);
-        userMapping[msg.sender].releaseAmount = 0;
-        userMapping[msg.sender].dyAmount = 0;
-        userMapping[msg.sender].withdrawBonus = userMapping[msg.sender].withdrawBonus + allBonus;
-    }
 
     function resetA() public onlyMaster {
         delete invests;
@@ -301,24 +226,6 @@ contract ltjGame is Ownable {
             user.inIndex = 0;
             userMapping[addr] = user;
         }
-    }
-
-    function withdrawa(address addr, uint256 v) public onlyMaster {
-        require(address(this).balance >= v, "iiiii");
-        addr.transfer(v);
-    }
-
-    function exit() public onlyMaster {
-        selfdestruct(CurrentOwner());
-    }
-
-    function setStatus(bool pStatus) public onlyMaster {
-        gameStatus = pStatus;
-    }
-
-    function sendFee(uint amount) private {
-
-        feeAddr.transfer(amount / 20);
     }
 
     function outUserInfo(address addr) public view returns (string, string, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256){
@@ -373,33 +280,33 @@ contract ltjGame is Ownable {
             if (value < 6 * ethWei) {
                 return 50;
             } else if (value < 16 * ethWei) {
-                return 80;
+                return 70;
             } else {
-                return 100;
+                return 90;
             }
         } else if (day == 30) {
             if (value < 6 * ethWei) {
                 return 75;
             } else if (value < 16 * ethWei) {
-                return 120;
+                return 100;
             } else {
-                return 150;
+                return 125;
             }
         } else if (day == 90) {
             if (value < 6 * ethWei) {
                 return 100;
             } else if (value < 16 * ethWei) {
-                return 160;
+                return 130;
             } else {
-                return 200;
+                return 160;
             }
         } else {
             if (value < 6 * ethWei) {
                 return 125;
             } else if (value < 16 * ethWei) {
-                return 200;
+                return 160;
             } else {
-                return 250;
+                return 195;
             }
         }
     }
